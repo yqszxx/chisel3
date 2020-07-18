@@ -887,41 +887,6 @@ abstract class Bundle(implicit compileOptions: CompileOptions) extends Record {
       (outerClass, outerInstance)
     }
 
-    // If possible (constructor with no arguments), try Java reflection first
-    // This handles two cases that Scala reflection doesn't:
-    // 1. getting the ClassSymbol of a class with an anonymous outer class fails with a
-    //    CyclicReference exception
-    // 2. invoking the constructor of an anonymous inner class seems broken (it expects the outer
-    //    class as an argument, but fails because the number of arguments passed in is incorrect)
-    if (clazz.getConstructors.size == 1) {
-      var ctor = clazz.getConstructors.head
-      val argTypes = ctor.getParameterTypes.toList
-      val clone = (argTypes, outerClassInstance) match {
-        case (Nil, None) => // no arguments, no outer class, invoke constructor directly
-          Some(ctor.newInstance().asInstanceOf[this.type])
-        case (argType :: Nil, Some((_, outerInstance))) =>
-          if (outerInstance == null) {
-            Builder.deprecated(s"chisel3.1 autoclonetype failed, falling back to 3.0 behavior using null as the outer instance." + // scalastyle:ignore line.size.limit
-                s" Autoclonetype failure reason: ${outerClassError.get}",
-                Some(s"$clazz"))
-            Some(ctor.newInstance(outerInstance).asInstanceOf[this.type])
-          } else if (argType isAssignableFrom outerInstance.getClass) {
-            Some(ctor.newInstance(outerInstance).asInstanceOf[this.type])
-          } else {
-            None
-          }
-        case _ => None
-
-      }
-      clone match {
-        case Some(clone) =>
-          clone._outerInst = this._outerInst
-          validateClone(clone, "Constructor argument values were not inferred, ensure constructor is deterministic.")
-          return clone.asInstanceOf[this.type]
-        case None =>
-      }
-    }
-
     // Get constructor parameters and accessible fields
     val classSymbol = classSymbolOption.getOrElse(autoClonetypeError(s"scala reflection failed." +
         " This is known to occur with inner classes on anonymous outer classes." +
