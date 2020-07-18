@@ -31,6 +31,10 @@ trait BundleSpecUtils {
     override def cloneType: this.type = (new BadSeqBundle).asInstanceOf[this.type]
   }
 
+  object SingletonBundle extends Bundle {
+    val foo = Input(UInt(16.W))
+  }
+
   class MyModule(output: Bundle, input: Bundle) extends Module {
     val io = IO(new Bundle {
       val in = Input(input)
@@ -127,5 +131,17 @@ class BundleSpec extends ChiselFlatSpec with BundleSpecUtils with Utils {
         io.b := 1.U
       } }
     }).getMessage should include("aliased fields")
+  }
+
+  "Bundles" should "not be cloned when they're defined as singleton objects" in {
+    (the[ChiselException] thrownBy extractCause[ChiselException] {
+      ChiselStage.elaborate {
+        new Module {
+          val io = IO(new Bundle {
+            val b = Flipped(SingletonBundle)
+          })
+        }
+      }
+    }).getMessage should include("cloneType called on object")
   }
 }

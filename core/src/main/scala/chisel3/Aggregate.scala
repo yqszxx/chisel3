@@ -892,6 +892,12 @@ abstract class Bundle(implicit compileOptions: CompileOptions) extends Record {
         " This is known to occur with inner classes on anonymous outer classes." +
         " In those cases, autoclonetype only works with no-argument constructors, or you can define a custom cloneType.")) // scalastyle:ignore line.size.limit
 
+    // Make sure we are not cloning a singleton object
+    if (classSymbol.isModuleClass) {
+      autoClonetypeError(s"cloneType called on object $className." +
+        " Create a new Bundle instance instead of using a singleton object.")
+    }
+
     val decls = classSymbol.typeSignature.decls
     val ctors = decls.collect { case meth: MethodSymbol if meth.isConstructor => meth }
     if (ctors.size != 1) {
