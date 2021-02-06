@@ -7,28 +7,15 @@ import scala.annotation.tailrec
 import scala.collection.mutable
 
 object QMCDecoder {
-  /** Construct a [[QMCDecoder]].
-    *
-    * @return A [[QMCDecoder]]
-    */
+  /** @return A instance of[[QMCDecoder]] */
   def apply(): QMCDecoder = new QMCDecoder()
 
   /** decoder cache during a chisel elaboration. */
   private val caches: mutable.Map[UInt, mutable.Map[Term, Bool]] = mutable.Map[UInt, mutable.Map[Term, Bool]]()
 }
 
+/** The [[https://en.wikipedia.org/wiki/Quine-McCluskey_algorithm]] decoder implementation. */
 class QMCDecoder extends Decoder {
-  /** Simplify a multi-input multi-output logic function given by the truth table `mapping`, with function output values
-    * on unspecified inputs treated as `default`, and return the output values of the function on input values `addr`.
-    *
-    * Each bit of `addr` and `mapping[]._1` means one 1-bit input variable of the logic function, and each bit of
-    * `default` and `mapping[]_2` represents one 1-bit output value of the function.
-    *
-    * @param addr     Input values
-    * @param default  Default output values, can have don't cares
-    * @param mapping  Truth table, can have don't cares in both inputs and outputs, specified as [(inputs, outputs), ...]
-    * @return         Output values of the logic function when inputs are `addr`
-    */
   def decode(addr: UInt, default: BitPat, mapping: Iterable[(BitPat, BitPat)]): UInt = {
     /** Construct a 1-bit output value out of given [[Seq]] of minterms by ORing them together, equity check between
       * inputs and one minterm is only calculated once using cache mechanism.
@@ -103,8 +90,8 @@ class QMCDecoder extends Decoder {
       }
     }
 
-    /** Use Petrick's method to select a [[Seq]] of nonessential prime implicants that covers all implicants that are not
-      * covered by essential prime implicants.
+    /** Use [[https://en.wikipedia.org/wiki/Petrick%27s_method]] to select a [[Seq]] of nonessential prime implicants
+      * that covers all implicants that are not covered by essential prime implicants.
       *
       * @param implicants Nonessential prime implicants
       * @param minterms   Implicants that are not covered by essential prime implicants
@@ -124,7 +111,7 @@ class QMCDecoder extends Decoder {
         *
         * @param a    Operand a
         * @param b    Operand b
-        * @param bits Number of input values
+        * @param bits Number of input outputs
         * @return
         */
       def cheaper(a: List[Term], b: List[Term], bits: Int) = {
@@ -173,7 +160,7 @@ class QMCDecoder extends Decoder {
       *
       * @param minterms Each one of these implicants makes output to be `1`
       * @param maxterms Each one of these implicants makes output to be `0`
-      * @param bits     Number of input values
+      * @param bits     Number of input outputs
       * @return Minimal (measured by implementation cost) set of implicants that each of them will result a `1` as output
       */
     def simplifyDC(minterms: Seq[Term], maxterms: Seq[Term], bits: Int): Seq[Term] = {
@@ -182,7 +169,7 @@ class QMCDecoder extends Decoder {
         *
         * @param minterms All implicants
         * @param maxterms Forbidden list of inferring
-        * @param bits     Number of 1-bit input values
+        * @param bits     Number of 1-bit input outputs
         * @return         Prime implicants
         */
       def getPrimeImplicants(minterms: Seq[Term], maxterms: Seq[Term], bits: Int): Seq[Term] = {
@@ -190,12 +177,12 @@ class QMCDecoder extends Decoder {
           *
           * @param maxterms The forbidden list of searching
           * @param term     The implicant we want to search implicit dc for
-          * @param bits     Number of input values
+          * @param bits     Number of input outputs
           * @param above    Are we searching for implicants with one more `1` in value than `term`? (or search for implicants with one less `1`)
           * @return         The implicants that we found or `null`
           */
         def getImplicitDC(maxterms: Seq[Term], term: Term, bits: Int, above: Boolean): Term = {
-          // foreach input values in implicant `term`
+          // foreach input outputs in implicant `term`
           for (i <- 0 until bits) {
             var t: Term = null
             if (above && ((term.value | term.mask) & (BigInt(1) << i)) == 0)  // the i-th input of this implicant is cared and is `0`
@@ -249,7 +236,8 @@ class QMCDecoder extends Decoder {
       val prime = getPrimeImplicants(minterms, maxterms, bits)
       val (eprime, prime2, uncovered) = getEssentialPrimeImplicants(prime, minterms)
       val cover = eprime ++ getCover(prime2, uncovered, bits)
-      verify(cover, minterms, maxterms)  // sanity check, now we should get all implicants covered, and did not violate the forbidden list
+      // sanity check, now we should get all implicants covered, and did not violate the forbidden list
+      verify(cover, minterms, maxterms)
       cover
     }
 
@@ -258,14 +246,14 @@ class QMCDecoder extends Decoder {
       *
       * @param minterms   Each one of these implicants makes output to be `1`
       * @param dontcares  Each one of these implicants makes output to be either `0` or `1`
-      * @param bits       Number of input values
+      * @param bits       Number of input outputs
       * @return           Minimal (measured by implementation cost) set of implicants that each of them will result a `1` as output
       */
     def simplify(minterms: Seq[Term], dontcares: Seq[Term], bits: Int): Seq[Term] = {
       /** Get prime implicants from all implicants.
         *
         * @param implicants All implicants
-        * @param bits       Number of 1-bit input values
+        * @param bits       Number of 1-bit input outputs
         * @return           Prime implicants
         */
       def getPrimeImplicants(implicants: Seq[Term], bits: Int): Seq[Term] = {
@@ -317,7 +305,8 @@ class QMCDecoder extends Decoder {
         val (eprime, prime2, uncovered) = getEssentialPrimeImplicants(prime, minterms)
         // select nonessential prime implicants to cover the left uncovered implicants
         val cover = eprime ++ getCover(prime2, uncovered, bits)
-        minterms.foreach(t => assert(cover.exists(_.covers(t)))) // sanity check, now we should get all implicants covered
+        // sanity check, now we should get all implicants covered
+        minterms.foreach(t => assert(cover.exists(_.covers(t))))
         cover
       }
     }
@@ -325,27 +314,28 @@ class QMCDecoder extends Decoder {
     // get existing cache or create an empty one
     val cache = QMCDecoder.caches.getOrElseUpdate(addr, mutable.Map[Term, Bool]())
     val defaultTerm = term(default)
-    // keys - inputs, values - outputs
-    val (keys, values) = mapping.unzip
+    // extract decode table to inputs and outputs
+    val (inputs, outputs) = mapping.unzip
     // Number of inputs
-    val addrWidth = keys.map(_.getWidth).max
+    val addrWidth = inputs.map(_.getWidth).max
     // input Terms
-    val terms = keys.toList.map(k => term(k))
+    val terms = inputs.toList.map(k => term(k))
     // (inputTerm, outputTerm) pairs
-    val termvalues = terms.zip(values.toList.map(term))
+    val termvalues = terms.zip(outputs.toList.map(term))
 
     // Check no two input patterns specified in the truth table intersect
-    for (t <- keys.zip(terms).tails; if t.nonEmpty)
+    for (t <- inputs.zip(terms).tails; if t.nonEmpty)
       for (u <- t.tail)
         assert(
           !t.head._2.intersects(u._2),
-          "DecodeLogic: keys " + t.head + " and " + u + " overlap"
+          "DecodeLogic: inputs " + t.head + " and " + u + " overlap"
         )
 
     Cat(
       // Foreach 1-bit value in outputs
-      (0 until default.getWidth.max(values.map(_.getWidth).max))
+      (0 until default.getWidth.max(outputs.map(_.getWidth).max))
         .map({ i: Int =>
+          // @todo convert pattern (t.mask >> i) & 1) == 1 -> t.testBit(i)
           // Min terms, implicants that makes the output to be 1
           // k - term, t - value
           val mint: Seq[Term] =
